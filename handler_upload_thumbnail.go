@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,6 +48,16 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer file.Close()
 
 	contenttype := header.Header.Get("Content-Type")
+	mediatype, _, err := mime.ParseMediaType(contenttype)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "unable to parse contenttype", err)
+		return
+	}
+	if mediatype != "image/jpeg" && mediatype != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "contenttype is not png or jpeg", err)
+		return
+	}
+
 	split := strings.TrimPrefix(contenttype, "image/")
 	// bytes, err := io.ReadAll(file)
 	// if err != nil {
@@ -71,7 +84,17 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	// dataURL := fmt.Sprintf("data:%v;base64,%v", contenttype, encodedData)
 	//video.ThumbnailURL = &dataURL
 
-	filepath := filepath.Join(cfg.assetsRoot, fmt.Sprintf("%v.%v", video.ID, split))
+	b := make([]byte, 32)
+	_, err = rand.Read(b)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "rand read err", err)
+		return
+	}
+
+	url := base64.RawURLEncoding.EncodeToString(b)
+	filename := fmt.Sprintf("%v.%v", url, split)
+
+	filepath := filepath.Join(cfg.assetsRoot, filename)
 
 	f, err := os.Create(
 		//fmt.Sprintf("./assets/%v.%v", video.ID, split)
@@ -85,7 +108,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusInternalServerError, "cannot copy file", err)
 		return
 	}
-	dataURL := fmt.Sprintf("http://localhost:%v/assets/%v.%v", cfg.port, video.ID, split)
+	dataURL := fmt.Sprintf("http://localhost:%v/assets/%v", cfg.port, filename)
 	video.ThumbnailURL = &dataURL
 
 	// newURL := fmt.Sprintf("http://localhost:%v/api/thumbnails/%v", cfg.port, video.ID)
