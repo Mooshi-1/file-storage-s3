@@ -105,10 +105,29 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	url := base64.RawURLEncoding.EncodeToString(b)
 	key := url + ".mp4"
 
+	prefix, err := getVideoAspectRatio(tf.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "aspratio", err)
+		return
+	}
+	key = prefix + key
+
+	processedVid, err := processVideoForFastStart(tf.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error processing fast start", err)
+		return
+	}
+
+	newpointer, err := os.Open(processedVid)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "osOpen err", err)
+	}
+	defer newpointer.Close()
+
 	details := &s3.PutObjectInput{
 		Bucket:      aws.String(cfg.s3Bucket),
 		Key:         aws.String(key),
-		Body:        tf,
+		Body:        newpointer,
 		ContentType: aws.String("video/mp4"),
 	}
 
